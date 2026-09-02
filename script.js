@@ -58,12 +58,35 @@ function ensureToday() {
 
 function getWordState(id) {
   if (!STORE.words[id]) {
-    STORE.words[id] = { state: 'unknown', correct: 0, incorrect: 0, studyCount: 0, lastStudied: null, nextReview: null, lastType: null };
+    STORE.words[id] = { mastery: 'unknown', needsReview: false, correct: 0, incorrect: 0, studyCount: 0, lastStudied: null, nextReview: null, lastType: null };
   }
-  return STORE.words[id];
+  const st = STORE.words[id];
+  if (st.mastery === undefined) {
+    /* 旧バージョン（state一本化）からの移行 */
+    st.mastery = st.state === 'review' ? 'unknown' : (st.state || 'unknown');
+    st.needsReview = st.state === 'review';
+    delete st.state;
+  }
+  return st;
 }
 function updateWordState(id, patch) {
   Object.assign(getWordState(id), patch);
+  saveStore();
+}
+/* 学習状態の表示用ラベル：要復習フラグが立っていれば覚えた/あいまい/覚えていないより優先して表示する */
+function displayState(st) { return st.needsReview ? 'review' : st.mastery; }
+/* ユーザー自身が手動で学習状態を選ぶための唯一の入口（クイズの自動処理からは呼ばない） */
+function setUserMastery(id, key) {
+  const st = getWordState(id);
+  if (key === 'review') {
+    st.needsReview = true;
+  } else {
+    st.mastery = key;
+    st.needsReview = false;
+    if (key === 'known') st.nextReview = addDays(7);
+    else if (key === 'vague') st.nextReview = addDays(1);
+    else st.nextReview = todayStr();
+  }
   saveStore();
 }
 
@@ -85,16 +108,16 @@ function wordById(id) { return WORDS.find(w => w.id === id); }
 /* ---------- スマート復習の優先度 ---------- */
 function tierOf(st) {
   if (st.incorrect >= 2) return 1;
-  if (st.state === 'unknown') return 2;
-  if (st.state === 'vague') return 3;
-  if (st.state === 'review') return 4;
+  if (st.mastery === 'unknown') return 2;
+  if (st.mastery === 'vague') return 3;
+  if (st.needsReview) return 4;
   return 5;
 }
 function buildQueue(ids, count, includeAllKnown) {
   const now = todayStr();
   let candidates = ids.filter(id => {
     const st = getWordState(id);
-    if (st.state === 'known' && !includeAllKnown) return !st.nextReview || st.nextReview <= now;
+    if (displayState(st) === 'known' && !includeAllKnown) return !st.nextReview || st.nextReview <= now;
     return true;
   });
   if (candidates.length === 0) candidates = ids.slice();
@@ -110,8 +133,8 @@ function buildQueue(ids, count, includeAllKnown) {
 function buildTodayQueue() {
   const all = WORDS.map(w => w.id);
   const newWords = all.filter(id => getWordState(id).studyCount === 0);
-  const vague = all.filter(id => getWordState(id).state === 'vague');
-  const wrong = all.filter(id => getWordState(id).state === 'review');
+  const vague = all.filter(id => getWordState(id).mastery === 'vague');
+  const wrong = all.filter(id => getWordState(id).needsReview);
   let picks = [];
   picks.push(...shuffle(newWords).slice(0, 10));
   picks.push(...shuffle(vague).slice(0, 5));
@@ -125,7 +148,10 @@ function buildTodayQueue() {
   return buildQueue(picks, picks.length);
 }
 
-/* ---------- 学習記録の更新 ---------- */
+/* ---------- 学習記録の更新 ----------
+   覚えた／あいまい／覚えていない（mastery）はユーザーが手動でつける評価であり、
+   クイズの正誤では自動的に変更しない（setUserMastery からのみ変更する）。
+   クイズが自動で扱ってよいのは「要復習」フラグ（needsReview）と正解/不正解の回数だけ。 */
 function recordQuizAnswer(id, isCorrect) {
   ensureToday();
   const st = getWordState(id);
@@ -133,28 +159,22 @@ function recordQuizAnswer(id, isCorrect) {
   st.lastStudied = todayStr();
   if (isCorrect) {
     st.correct++;
-    if (st.state === 'review' || st.state === 'unknown') { st.state = 'vague'; st.nextReview = addDays(1); }
-    else if (st.state === 'vague') { st.state = 'known'; st.nextReview = addDays(7); }
-    else if (st.state === 'known') { st.nextReview = addDays(14); }
+    st.needsReview = false;
   } else {
     st.incorrect++;
-    st.state = 'review';
-    st.nextReview = todayStr();
+    st.needsReview = true;
   }
   STORE.today.total++;
   if (isCorrect) STORE.today.correct++;
   if (!STORE.today.studied.includes(id)) STORE.today.studied.push(id);
   saveStore();
 }
-function recordFlashcardRating(id, newState) {
+function recordFlashcardRating(id, newMastery) {
   ensureToday();
   const st = getWordState(id);
   st.studyCount++;
   st.lastStudied = todayStr();
-  st.state = newState;
-  if (newState === 'known') st.nextReview = addDays(7);
-  else if (newState === 'vague') st.nextReview = addDays(1);
-  else st.nextReview = todayStr();
+  setUserMastery(id, newMastery);
   if (!STORE.today.studied.includes(id)) STORE.today.studied.push(id);
   saveStore();
 }
@@ -178,7 +198,7 @@ function switchTab(name) {
 function renderHome() {
   ensureToday();
   const counts = { unknown: 0, vague: 0, known: 0, review: 0 };
-  WORDS.forEach(w => { counts[getWordState(w.id).state]++; });
+  WORDS.forEach(w => { counts[displayState(getWordState(w.id))]++; });
   const total = WORDS.length;
   document.getElementById('stat-grid').innerHTML = `
     <div class="stat-card total"><div class="stat-num">${total}</div><div class="stat-label">総単語数</div></div>
@@ -472,7 +492,7 @@ function renderReviewGroups() {
   const container = document.getElementById('review-groups');
   container.innerHTML = '';
   groups.forEach(g => {
-    const ids = g.key === 'all' ? WORDS.map(w => w.id) : WORDS.filter(w => getWordState(w.id).state === g.key).map(w => w.id);
+    const ids = g.key === 'all' ? WORDS.map(w => w.id) : WORDS.filter(w => displayState(getWordState(w.id)) === g.key).map(w => w.id);
     const btn = document.createElement('button');
     btn.className = 'review-group-btn rg-' + g.key;
     btn.innerHTML = `<span class="rg-label">${g.label}</span><span class="rg-count">${ids.length}語</span>`;
@@ -531,17 +551,17 @@ function renderWordList() {
   tbody.innerHTML = '';
   const q = currentSearch.trim().toLowerCase();
   const filtered = WORDS.filter(w => {
-    const st = getWordState(w.id).state;
+    const st = displayState(getWordState(w.id));
     if (currentFilter !== 'all' && st !== currentFilter) return false;
     if (!q) return true;
     return w.word.toLowerCase().includes(q) || w.reading.toLowerCase().includes(q) || w.meaning.toLowerCase().includes(q);
   });
   document.getElementById('list-count').textContent = `${filtered.length}件`;
   filtered.forEach(w => {
-    const st = getWordState(w.id);
+    const ds = displayState(getWordState(w.id));
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${escapeHtml(w.word)}</td><td>${escapeHtml(w.reading)}</td><td>${escapeHtml(w.meaning)}</td>
-      <td><span class="badge badge-${st.state}">${stateLabel(st.state)}</span></td>`;
+      <td><span class="badge badge-${ds}">${stateLabel(ds)}</span></td>`;
     tr.addEventListener('click', () => showWordDetail(w.id));
     tbody.appendChild(tr);
   });
@@ -561,13 +581,14 @@ function showWordDetail(id) {
     <button id="close-detail-btn" class="secondary-btn">閉じる</button>
   `;
   const pairs = [['unknown', '覚えていない'], ['vague', 'あいまい'], ['known', '覚えた'], ['review', '要復習']];
+  const currentDisplay = displayState(st);
   const row = document.getElementById('detail-state-buttons');
   pairs.forEach(([key, label]) => {
     const b = document.createElement('button');
-    b.className = 'state-choice-btn' + (st.state === key ? ' active' : '');
+    b.className = 'state-choice-btn' + (currentDisplay === key ? ' active' : '');
     b.textContent = label;
     b.addEventListener('click', () => {
-      updateWordState(id, { state: key });
+      setUserMastery(id, key);
       renderWordList();
       renderHome();
       showWordDetail(id);
@@ -600,11 +621,12 @@ function renderHistory() {
 
   document.getElementById('history-count').textContent = `${rows.length}件`;
   rows.forEach(({ w, st, rate }) => {
+    const ds = displayState(st);
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${escapeHtml(w.word)}（${escapeHtml(w.reading)}）</td>
       <td>${st.studyCount}</td><td>${st.correct}</td><td>${st.incorrect}</td>
       <td>${rate === null ? '―' : rate + '%'}</td><td>${st.lastStudied || '―'}</td>
-      <td><span class="badge badge-${st.state}">${stateLabel(st.state)}</span></td>`;
+      <td><span class="badge badge-${ds}">${stateLabel(ds)}</span></td>`;
     tbody.appendChild(tr);
   });
 }

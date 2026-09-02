@@ -313,6 +313,7 @@ function renderQuizQuestion() {
 
   const letters = ['A', 'B', 'C', 'D'];
   const optDiv = document.getElementById('quiz-options');
+  optDiv.classList.remove('hidden');
   optDiv.innerHTML = '';
   options.forEach((opt, i) => {
     const btn = document.createElement('button');
@@ -336,18 +337,19 @@ function selectAnswer(i) {
   recordQuizAnswer(word.id, isCorrect);
   updateWordState(word.id, { lastType: quizSession.currentType });
 
-  document.querySelectorAll('#quiz-options .option-btn').forEach((b, idx) => {
-    b.disabled = true;
-    if (idx === quizSession.currentCorrectIndex) b.classList.add('correct');
-    else if (idx === i) b.classList.add('incorrect');
-  });
-
   const letters = ['A', 'B', 'C', 'D'];
+  const optionButtons = document.querySelectorAll('#quiz-options .option-btn');
+  const selectedText = optionButtons[i] ? optionButtons[i].querySelector('.opt-text').textContent : '';
+  /* 選択肢はどれだけ長い文章でも、回答後は画面から消して縦スペースを確保する */
+  document.getElementById('quiz-options').classList.add('hidden');
+
   const correctText = quizSession.currentField === 'reading' ? word.reading
     : quizSession.currentField === 'word' ? word.word : word.meaning;
+  const yourAnswerLine = isCorrect ? '' : `<p><strong>あなたの回答：</strong>${letters[i]}. ${escapeHtml(selectedText)}</p>`;
   document.getElementById('quiz-feedback').classList.remove('hidden');
   document.getElementById('quiz-feedback').innerHTML = `
     <p class="result-line ${isCorrect ? 'correct-text' : 'incorrect-text'}">${isCorrect ? '○ 正解！' : '× 不正解'}</p>
+    ${yourAnswerLine}
     <p><strong>正しい答え：</strong>${letters[quizSession.currentCorrectIndex]}. ${escapeHtml(correctText)}</p>
     <p><strong>単語：</strong>${escapeHtml(word.word)}（${escapeHtml(word.reading)}）</p>
     <p><strong>意味：</strong>${escapeHtml(word.meaning)}</p>

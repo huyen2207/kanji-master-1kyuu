@@ -283,6 +283,7 @@ function startQuiz(pool, count) {
   document.getElementById('quiz-setup').classList.add('hidden');
   document.getElementById('quiz-result').classList.add('hidden');
   document.getElementById('quiz-play').classList.remove('hidden');
+  document.getElementById('app-header').classList.add('hidden');
   renderQuizQuestion();
 }
 
@@ -348,11 +349,9 @@ function selectAnswer(i) {
   document.getElementById('quiz-feedback').innerHTML = `
     <p class="result-line ${isCorrect ? 'correct-text' : 'incorrect-text'}">${isCorrect ? '○ 正解！' : '× 不正解'}</p>
     <p><strong>正しい答え：</strong>${letters[quizSession.currentCorrectIndex]}. ${escapeHtml(correctText)}</p>
-    <p><strong>単語：</strong>${escapeHtml(word.word)}</p>
-    <p><strong>読み方：</strong>${escapeHtml(word.reading)}</p>
+    <p><strong>単語：</strong>${escapeHtml(word.word)}（${escapeHtml(word.reading)}）</p>
     <p><strong>意味：</strong>${escapeHtml(word.meaning)}</p>
-    <p><strong>品詞（語形からの自動分類・参考）：</strong>${escapeHtml(word.pos || '―')}</p>
-    <p class="muted-note">※この教材データには例文が収録されていないため、例文は表示していません。</p>
+    <p><strong>品詞（参考）：</strong>${escapeHtml(word.pos || '―')}　<span class="muted-note">※例文なし</span></p>
     <p><strong>出典：</strong>${escapeHtml(word.source)}</p>
   `;
 
@@ -374,6 +373,7 @@ function nextQuizQuestion() {
 }
 function showQuizResult() {
   document.getElementById('quiz-play').classList.add('hidden');
+  document.getElementById('app-header').classList.remove('hidden');
   const acc = quizSession.total ? Math.round((quizSession.correct / quizSession.total) * 100) : 0;
   const res = document.getElementById('quiz-result');
   res.classList.remove('hidden');
@@ -394,6 +394,7 @@ function quitQuiz() {
   document.getElementById('quiz-play').classList.add('hidden');
   document.getElementById('quiz-result').classList.add('hidden');
   document.getElementById('quiz-setup').classList.remove('hidden');
+  document.getElementById('app-header').classList.remove('hidden');
   renderHome();
 }
 

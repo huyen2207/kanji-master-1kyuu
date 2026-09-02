@@ -56,9 +56,12 @@ function ensureToday() {
   }
 }
 
+const AUTO_MASTER_STREAK = 5;
+const AUTO_MASTER_DAYS = 14;
+
 function getWordState(id) {
   if (!STORE.words[id]) {
-    STORE.words[id] = { mastery: 'unknown', needsReview: false, correct: 0, incorrect: 0, studyCount: 0, lastStudied: null, nextReview: null, lastType: null };
+    STORE.words[id] = { mastery: 'unknown', needsReview: false, correct: 0, incorrect: 0, studyCount: 0, lastStudied: null, nextReview: null, lastType: null, streak: 0 };
   }
   const st = STORE.words[id];
   if (st.mastery === undefined) {
@@ -67,6 +70,7 @@ function getWordState(id) {
     st.needsReview = st.state === 'review';
     delete st.state;
   }
+  if (st.streak === undefined) st.streak = 0;
   return st;
 }
 function updateWordState(id, patch) {
@@ -78,6 +82,7 @@ function displayState(st) { return st.needsReview ? 'review' : st.mastery; }
 /* ユーザー自身が手動で学習状態を選ぶための唯一の入口（クイズの自動処理からは呼ばない） */
 function setUserMastery(id, key) {
   const st = getWordState(id);
+  st.streak = 0; /* 手動での変更は連続正解カウントをリセットする */
   if (key === 'review') {
     st.needsReview = true;
   } else {
@@ -162,17 +167,28 @@ function recordQuizAnswer(id, isCorrect) {
   const st = getWordState(id);
   st.studyCount++;
   st.lastStudied = todayStr();
+  let autoMastered = false;
   if (isCorrect) {
     st.correct++;
     st.needsReview = false;
+    st.streak = (st.streak || 0) + 1;
+    /* 5回連続正解したら自動的に「覚えた」にして2週間は出題しない */
+    if (st.streak >= AUTO_MASTER_STREAK) {
+      st.mastery = 'known';
+      st.nextReview = addDays(AUTO_MASTER_DAYS);
+      st.streak = 0;
+      autoMastered = true;
+    }
   } else {
     st.incorrect++;
     st.needsReview = true;
+    st.streak = 0;
   }
   STORE.today.total++;
   if (isCorrect) STORE.today.correct++;
   if (!STORE.today.studied.includes(id)) STORE.today.studied.push(id);
   saveStore();
+  return autoMastered;
 }
 function recordFlashcardRating(id, newMastery) {
   ensureToday();
@@ -349,7 +365,7 @@ function selectAnswer(i) {
   quizSession.total++;
   if (isCorrect) quizSession.correct++;
 
-  recordQuizAnswer(word.id, isCorrect);
+  const autoMastered = recordQuizAnswer(word.id, isCorrect);
   updateWordState(word.id, { lastType: quizSession.currentType });
 
   const letters = ['A', 'B', 'C', 'D'];
@@ -361,6 +377,7 @@ function selectAnswer(i) {
   const correctText = quizSession.currentField === 'reading' ? word.reading
     : quizSession.currentField === 'word' ? word.word : word.meaning;
   const yourAnswerLine = isCorrect ? '' : `<p><strong>あなたの回答：</strong>${letters[i]}. ${escapeHtml(selectedText)}</p>`;
+  const autoMasteredLine = autoMastered ? `<p class="auto-mastered-note">🎉 ${AUTO_MASTER_STREAK}回連続正解！「覚えた」に登録し、${AUTO_MASTER_DAYS}日間は出題を休みます。</p>` : '';
   document.getElementById('quiz-feedback').classList.remove('hidden');
   document.getElementById('quiz-feedback').innerHTML = `
     <p class="result-line ${isCorrect ? 'correct-text' : 'incorrect-text'}">${isCorrect ? '○ 正解！' : '× 不正解'}</p>
@@ -370,6 +387,7 @@ function selectAnswer(i) {
     <p><strong>意味：</strong>${escapeHtml(word.meaning)}</p>
     <p><strong>品詞（参考）：</strong>${escapeHtml(word.pos || '―')}　<span class="muted-note">※例文なし</span></p>
     <p><strong>出典：</strong>${escapeHtml(word.source)}</p>
+    ${autoMasteredLine}
   `;
 
   const currentItem = quizSession.items[quizSession.idx];

@@ -60,7 +60,7 @@ body {
 main {
   max-width: 720px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 12px 16px;
 }
 
 .tab-view { display: none; }
@@ -245,6 +245,16 @@ h2 { color: var(--color-primary-dark); margin-top: 0; }
 .result-line { font-weight: 700; font-size: 1.05rem; margin-bottom: 4px !important; }
 .correct-text { color: var(--color-known); }
 .incorrect-text { color: var(--color-review); }
+.auto-mastered-note {
+  margin-top: 6px !important;
+  padding: 6px 10px;
+  background: #eaf7f1;
+  border: 1px solid var(--color-known);
+  border-radius: 8px;
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  font-size: 0.82rem;
+}
 
 .result-box {
   background: var(--color-surface);

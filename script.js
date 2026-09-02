@@ -129,20 +129,25 @@ function buildQueue(ids, count, includeAllKnown) {
   return ordered.slice(0, n);
 }
 
-/* 今日の学習（新しい単語10 + あいまい5 + 間違えた単語5、不足分は優先度順で補充） */
-function buildTodayQueue() {
+/* 今日の学習（新しい単語50% + あいまい25% + 間違えた単語25%、不足分は優先度順で補充）
+   count を省略／0（すべて）の場合は配分せず全単語をスマート優先順で返す */
+function buildTodayQueue(count) {
   const all = WORDS.map(w => w.id);
+  if (!count) return buildQueue(all, 0);
+  const newCount = Math.round(count * 0.5);
+  const vagueCount = Math.round(count * 0.25);
+  const wrongCount = Math.max(0, count - newCount - vagueCount);
   const newWords = all.filter(id => getWordState(id).studyCount === 0);
   const vague = all.filter(id => getWordState(id).mastery === 'vague');
   const wrong = all.filter(id => getWordState(id).needsReview);
   let picks = [];
-  picks.push(...shuffle(newWords).slice(0, 10));
-  picks.push(...shuffle(vague).slice(0, 5));
-  picks.push(...shuffle(wrong).slice(0, 5));
+  picks.push(...shuffle(newWords).slice(0, newCount));
+  picks.push(...shuffle(vague).slice(0, vagueCount));
+  picks.push(...shuffle(wrong).slice(0, wrongCount));
   picks = Array.from(new Set(picks));
-  if (picks.length < 20) {
+  if (picks.length < count) {
     const rest = all.filter(id => !picks.includes(id));
-    const need = 20 - picks.length;
+    const need = count - picks.length;
     picks = picks.concat(buildQueue(rest, need));
   }
   return buildQueue(picks, picks.length);
@@ -186,6 +191,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-view').forEach(v => v.classList.toggle('active', v.id === 'tab-' + name));
   if (name === 'home') renderHome();
+  if (name === 'quiz') updateQuizSetupLabel();
   if (name === 'flashcard' && !flashSession) renderFlashcardIntro();
   if (name === 'review') renderReviewGroups();
   if (name === 'list') renderWordList();
@@ -250,6 +256,15 @@ function renderLastSession() {
    クイズ
    ========================================================================== */
 let quizSession = null;
+let quizEntryMode = 'normal'; /* 'today' のときだけ出題数選択後に buildTodayQueue を使う */
+
+function updateQuizSetupLabel() {
+  const desc = document.getElementById('quiz-setup-desc');
+  if (!desc) return;
+  desc.textContent = quizEntryMode === 'today'
+    ? '今日の学習：新しい単語・あいまいな単語・間違えた単語をバランスよく出題します。出題数を選んでください。'
+    : '出題数を選んでください（優先度の高い単語から出題されます）';
+}
 
 function pickQuestionType(id) {
   const st = getWordState(id);
@@ -640,15 +655,26 @@ function renderHistory() {
 function init() {
   ensureToday();
 
-  document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.tab === 'quiz') quizEntryMode = 'normal';
+    switchTab(b.dataset.tab);
+  }));
 
   document.getElementById('start-today-btn').addEventListener('click', () => {
+    quizEntryMode = 'today';
+    document.getElementById('quiz-play').classList.add('hidden');
+    document.getElementById('quiz-result').classList.add('hidden');
+    document.getElementById('quiz-setup').classList.remove('hidden');
     switchTab('quiz');
-    startQuiz(buildTodayQueue(), 0);
   });
 
   document.querySelectorAll('#quiz-setup .count-btn').forEach(btn => {
-    btn.addEventListener('click', () => startQuiz(WORDS.map(w => w.id), parseInt(btn.dataset.count, 10) || 0));
+    btn.addEventListener('click', () => {
+      const count = parseInt(btn.dataset.count, 10) || 0;
+      const pool = quizEntryMode === 'today' ? buildTodayQueue(count) : WORDS.map(w => w.id);
+      startQuiz(pool, count);
+      quizEntryMode = 'normal';
+    });
   });
   document.getElementById('quiz-next-btn').addEventListener('click', nextQuizQuestion);
   document.getElementById('quiz-quit-btn').addEventListener('click', quitQuiz);

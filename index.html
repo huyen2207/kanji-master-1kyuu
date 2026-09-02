@@ -31,7 +31,7 @@
     </div>
     <div class="today-stats" id="today-stats"></div>
     <button id="start-today-btn" class="primary-btn big-btn">今日の学習を始める</button>
-    <p class="hint">新しい単語・あいまいな単語・間違えた単語をバランスよく20問出題します。</p>
+    <p class="hint">新しい単語・あいまいな単語・間違えた単語をバランスよく出題します。出題数はこのあと選べます。</p>
     <div class="last-session-box" id="last-session-box"></div>
   </section>
 
@@ -39,7 +39,7 @@
   <section id="tab-quiz" class="tab-view">
     <h2>4択クイズ</h2>
     <div id="quiz-setup">
-      <p>出題数を選んでください（優先度の高い単語から出題されます）</p>
+      <p id="quiz-setup-desc">出題数を選んでください（優先度の高い単語から出題されます）</p>
       <div class="option-row">
         <button class="count-btn" data-count="30">30問</button>
         <button class="count-btn" data-count="60">60問</button>

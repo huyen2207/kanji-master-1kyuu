@@ -595,10 +595,18 @@ function renderWordList() {
   document.getElementById('list-count').textContent = `${filtered.length}件`;
   filtered.forEach(w => {
     const ds = displayState(getWordState(w.id));
+    const alreadyKnown = ds === 'known';
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${escapeHtml(w.word)}</td><td>${escapeHtml(w.reading)}</td><td>${escapeHtml(w.meaning)}</td>
-      <td><span class="badge badge-${ds}">${stateLabel(ds)}</span></td>`;
+      <td><span class="badge badge-${ds}">${stateLabel(ds)}</span></td>
+      <td><button class="quick-known-btn"${alreadyKnown ? ' disabled' : ''}>${alreadyKnown ? '✓ 覚えた済み' : '覚えたにする'}</button></td>`;
     tr.addEventListener('click', () => showWordDetail(w.id));
+    tr.querySelector('.quick-known-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      setUserMastery(w.id, 'known');
+      renderWordList();
+      renderHome();
+    });
     tbody.appendChild(tr);
   });
 }

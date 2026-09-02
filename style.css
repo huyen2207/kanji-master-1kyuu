@@ -357,7 +357,7 @@ h2 { color: var(--color-primary-dark); margin-top: 0; }
 .count-label { color: var(--color-muted); font-size: 0.8rem; }
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 560px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 480px; }
 th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--color-border); white-space: nowrap; }
 th:nth-child(3), td:nth-child(3) { white-space: normal; min-width: 200px; }
 tbody tr { cursor: pointer; }
@@ -369,24 +369,17 @@ tbody tr:hover { background: var(--color-bg); }
 .badge-unknown { background: var(--color-unknown); }
 .badge-review { background: var(--color-review); }
 
-.quick-known-btn {
-  border: 1px solid var(--color-known);
-  background: var(--color-surface);
-  color: var(--color-known);
+.state-select {
+  appearance: auto;
+  border: none;
   border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 0.78rem;
+  padding: 3px 8px;
+  font-size: 0.75rem;
   font-weight: 600;
+  color: #fff;
   cursor: pointer;
-  white-space: nowrap;
 }
-.quick-known-btn:hover:not(:disabled) { background: var(--color-known); color: #fff; }
-.quick-known-btn:disabled {
-  border-color: var(--color-border);
-  color: var(--color-muted);
-  cursor: default;
-  font-weight: 400;
-}
+.state-select option { color: var(--color-text); background: var(--color-surface); font-weight: 400; }
 
 .detail-panel {
   margin-top: 14px;

@@ -593,17 +593,20 @@ function renderWordList() {
     return w.word.toLowerCase().includes(q) || w.reading.toLowerCase().includes(q) || w.meaning.toLowerCase().includes(q);
   });
   document.getElementById('list-count').textContent = `${filtered.length}件`;
+  const masteryOptions = [['unknown', '覚えていない'], ['vague', 'あいまい'], ['known', '覚えた']];
   filtered.forEach(w => {
-    const ds = displayState(getWordState(w.id));
-    const alreadyKnown = ds === 'known';
+    const st = getWordState(w.id);
+    const ds = displayState(st);
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${escapeHtml(w.word)}</td><td>${escapeHtml(w.reading)}</td><td>${escapeHtml(w.meaning)}</td>
-      <td><span class="badge badge-${ds}">${stateLabel(ds)}</span></td>
-      <td><button class="quick-known-btn"${alreadyKnown ? ' disabled' : ''}>${alreadyKnown ? '✓ 覚えた済み' : '覚えたにする'}</button></td>`;
+      <td><select class="state-select badge-${ds}">
+        ${masteryOptions.map(([key, label]) => `<option value="${key}"${st.mastery === key ? ' selected' : ''}>${label}</option>`).join('')}
+      </select></td>`;
     tr.addEventListener('click', () => showWordDetail(w.id));
-    tr.querySelector('.quick-known-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      setUserMastery(w.id, 'known');
+    const select = tr.querySelector('.state-select');
+    select.addEventListener('click', (e) => e.stopPropagation());
+    select.addEventListener('change', (e) => {
+      setUserMastery(w.id, e.target.value);
       renderWordList();
       renderHome();
     });

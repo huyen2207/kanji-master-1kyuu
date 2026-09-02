@@ -31,13 +31,23 @@ function loadStore() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.words && parsed.today) return parsed;
+      if (parsed && parsed.words && parsed.today) {
+        if (!Array.isArray(parsed.sessionHistory)) parsed.sessionHistory = [];
+        return parsed;
+      }
     }
   } catch (e) { /* 破損データは初期化する */ }
-  return { words: {}, today: { date: todayStr(), studied: [], correct: 0, total: 0 } };
+  return { words: {}, today: { date: todayStr(), studied: [], correct: 0, total: 0 }, sessionHistory: [] };
 }
 let STORE = loadStore();
 function saveStore() { localStorage.setItem(STORAGE_KEY, JSON.stringify(STORE)); }
+
+/* 学習セッションの結果を記録する（次回開いたときに前回の結果を確認できるようにするため） */
+function recordSessionResult(entry) {
+  STORE.sessionHistory.unshift(Object.assign({ date: todayStr() }, entry));
+  STORE.sessionHistory = STORE.sessionHistory.slice(0, 20);
+  saveStore();
+}
 
 function ensureToday() {
   if (STORE.today.date !== todayStr()) {
@@ -80,11 +90,11 @@ function tierOf(st) {
   if (st.state === 'review') return 4;
   return 5;
 }
-function buildQueue(ids, count) {
+function buildQueue(ids, count, includeAllKnown) {
   const now = todayStr();
   let candidates = ids.filter(id => {
     const st = getWordState(id);
-    if (st.state === 'known') return !st.nextReview || st.nextReview <= now;
+    if (st.state === 'known' && !includeAllKnown) return !st.nextReview || st.nextReview <= now;
     return true;
   });
   if (candidates.length === 0) candidates = ids.slice();
@@ -156,6 +166,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-view').forEach(v => v.classList.toggle('active', v.id === 'tab-' + name));
   if (name === 'home') renderHome();
+  if (name === 'flashcard' && !flashSession) renderFlashcardIntro();
   if (name === 'review') renderReviewGroups();
   if (name === 'list') renderWordList();
   if (name === 'history') renderHistory();
@@ -184,6 +195,34 @@ function renderHome() {
   document.getElementById('today-stats').innerHTML = `
     <p>今日勉強した単語：<strong>${STORE.today.studied.length}</strong>語</p>
     <p>今日の正答率：<strong>${acc === null ? 'ー' : acc + '%'}</strong></p>
+  `;
+  renderLastSession();
+}
+
+/* 前回・過去の学習セッション結果（次に開いたときに進み具合を確認できるように） */
+function renderLastSession() {
+  const box = document.getElementById('last-session-box');
+  const history = STORE.sessionHistory || [];
+  if (history.length === 0) {
+    box.innerHTML = `<p class="hint">まだ学習記録がありません。クイズかフラッシュカードに挑戦してみましょう。</p>`;
+    return;
+  }
+  const last = history[0];
+  const lastLine = last.mode === 'quiz'
+    ? `前回のクイズ（${last.date}）：${last.correct} / ${last.total}問正解（正答率 ${last.accuracy}%）`
+    : `前回のフラッシュカード（${last.date}）：${last.count}枚を確認`;
+  const recentList = history.slice(0, 5).map(h => {
+    const line = h.mode === 'quiz'
+      ? `クイズ ${h.correct}/${h.total}問（${h.accuracy}%）`
+      : `フラッシュカード ${h.count}枚`;
+    return `<li>${h.date}　${line}</li>`;
+  }).join('');
+  box.innerHTML = `
+    <p class="last-session-line">${lastLine}</p>
+    <details class="session-history-details">
+      <summary>過去の学習記録を見る（最新${history.slice(0, 5).length}件）</summary>
+      <ul class="session-history-list">${recentList}</ul>
+    </details>
   `;
 }
 
@@ -218,7 +257,7 @@ function startQuiz(pool, count) {
     return;
   }
   quizSession = {
-    items: queueIds.map(id => ({ id, type: pickQuestionType(id) })),
+    items: queueIds.map(id => ({ id, type: pickQuestionType(id), retries: 0 })),
     idx: 0, correct: 0, total: 0
   };
   document.getElementById('quiz-setup').classList.add('hidden');
@@ -297,11 +336,12 @@ function selectAnswer(i) {
     <p><strong>出典：</strong>${escapeHtml(word.source)}</p>
   `;
 
-  if (!isCorrect) {
+  const currentItem = quizSession.items[quizSession.idx];
+  if (!isCorrect && currentItem.retries < 2) {
     const otherTypes = ['meaning', 'reading', 'word'].filter(t => t !== quizSession.currentType);
     const nextType = otherTypes[Math.floor(Math.random() * otherTypes.length)];
     const insertPos = Math.min(quizSession.items.length, quizSession.idx + 3 + Math.floor(Math.random() * 3));
-    quizSession.items.splice(insertPos, 0, { id: word.id, type: nextType });
+    quizSession.items.splice(insertPos, 0, { id: word.id, type: nextType, retries: currentItem.retries + 1 });
   }
   document.getElementById('quiz-next-btn').classList.remove('hidden');
 }
@@ -326,6 +366,7 @@ function showQuizResult() {
     res.classList.add('hidden');
     document.getElementById('quiz-setup').classList.remove('hidden');
   });
+  recordSessionResult({ mode: 'quiz', correct: quizSession.correct, total: quizSession.total, accuracy: acc });
   renderHome();
 }
 function quitQuiz() {
@@ -340,15 +381,30 @@ function quitQuiz() {
    フラッシュカード
    ========================================================================== */
 let flashSession = null;
+let mistakePool = [];
 
-function startFlashcards(pool, count) {
-  const ids = buildQueue(pool, count);
+/* フラッシュカードは「これまでに一度でも間違えた単語」だけを集めたコレクション */
+function buildMistakePool() {
+  return WORDS.filter(w => getWordState(w.id).incorrect > 0).map(w => w.id);
+}
+function renderFlashcardIntro() {
+  document.getElementById('flashcard-play').classList.add('hidden');
+  document.getElementById('flashcard-result').classList.add('hidden');
+  document.getElementById('flashcard-intro').classList.remove('hidden');
+  mistakePool = buildMistakePool();
+  const count = mistakePool.length;
+  document.getElementById('flashcard-count-text').textContent = `間違えた単語：${count}語`;
+  document.getElementById('flashcard-start-btn').classList.toggle('hidden', count === 0);
+  document.getElementById('flashcard-empty-msg').classList.toggle('hidden', count > 0);
+}
+function startFlashcards(pool, count, includeAllKnown) {
+  const ids = buildQueue(pool, count, includeAllKnown);
   if (ids.length === 0) {
     alert('このグループには出題できる単語がありません。');
     return;
   }
   flashSession = { ids, idx: 0, flipped: false };
-  document.getElementById('flashcard-setup').classList.add('hidden');
+  document.getElementById('flashcard-intro').classList.add('hidden');
   document.getElementById('flashcard-result').classList.add('hidden');
   document.getElementById('flashcard-play').classList.remove('hidden');
   renderFlashcard();
@@ -360,10 +416,9 @@ function renderFlashcard() {
   document.getElementById('flashcard-front').innerHTML = `<div class="fc-word">${escapeHtml(word.word)}</div>`;
   document.getElementById('flashcard-back').classList.add('hidden');
   document.getElementById('flashcard-back').innerHTML = `
-    <p><strong>読み方：</strong>${escapeHtml(word.reading)}</p>
+    <p><strong>読み方（ふりがな）：</strong>${escapeHtml(word.reading)}</p>
     <p><strong>意味：</strong>${escapeHtml(word.meaning)}</p>
-    <p><strong>品詞（語形からの自動分類・参考）：</strong>${escapeHtml(word.pos || '―')}</p>
-    <p class="muted-note">※例文データはこの教材に収録されていません。</p>
+    <p><strong>出典：</strong>${escapeHtml(word.source)}</p>
   `;
   document.getElementById('flip-hint').classList.remove('hidden');
   document.getElementById('flash-buttons').classList.add('hidden');
@@ -389,19 +444,15 @@ function showFlashResult() {
   res.innerHTML = `
     <h3>お疲れさまでした</h3>
     <p>${flashSession.ids.length}枚のカードを確認しました。</p>
-    <button id="flash-restart-btn" class="primary-btn">カード選択に戻る</button>
+    <button id="flash-restart-btn" class="primary-btn">間違えた単語カードに戻る</button>
   `;
-  document.getElementById('flash-restart-btn').addEventListener('click', () => {
-    res.classList.add('hidden');
-    document.getElementById('flashcard-setup').classList.remove('hidden');
-  });
+  document.getElementById('flash-restart-btn').addEventListener('click', renderFlashcardIntro);
+  recordSessionResult({ mode: 'flashcard', count: flashSession.ids.length });
   renderHome();
 }
 function quitFlashcards() {
   flashSession = null;
-  document.getElementById('flashcard-play').classList.add('hidden');
-  document.getElementById('flashcard-result').classList.add('hidden');
-  document.getElementById('flashcard-setup').classList.remove('hidden');
+  renderFlashcardIntro();
   renderHome();
 }
 
@@ -577,8 +628,8 @@ function init() {
   document.getElementById('quiz-next-btn').addEventListener('click', nextQuizQuestion);
   document.getElementById('quiz-quit-btn').addEventListener('click', quitQuiz);
 
-  document.querySelectorAll('#flashcard-setup .count-btn').forEach(btn => {
-    btn.addEventListener('click', () => startFlashcards(WORDS.map(w => w.id), parseInt(btn.dataset.count, 10) || 0));
+  document.getElementById('flashcard-start-btn').addEventListener('click', () => {
+    startFlashcards(mistakePool, 0, true);
   });
   document.getElementById('flashcard').addEventListener('click', flipFlashcard);
   document.querySelectorAll('#flash-buttons button').forEach(btn => {

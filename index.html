@@ -32,6 +32,7 @@
     <div class="today-stats" id="today-stats"></div>
     <button id="start-today-btn" class="primary-btn big-btn">今日の学習を始める</button>
     <p class="hint">新しい単語・あいまいな単語・間違えた単語をバランスよく20問出題します。</p>
+    <div class="last-session-box" id="last-session-box"></div>
   </section>
 
   <!-- クイズ -->
@@ -40,9 +41,10 @@
     <div id="quiz-setup">
       <p>出題数を選んでください（優先度の高い単語から出題されます）</p>
       <div class="option-row">
-        <button class="count-btn" data-count="10">10問</button>
-        <button class="count-btn" data-count="20">20問</button>
         <button class="count-btn" data-count="30">30問</button>
+        <button class="count-btn" data-count="60">60問</button>
+        <button class="count-btn" data-count="100">100問</button>
+        <button class="count-btn" data-count="0">すべて</button>
       </div>
     </div>
     <div id="quiz-play" class="hidden">
@@ -60,14 +62,12 @@
 
   <!-- フラッシュカード -->
   <section id="tab-flashcard" class="tab-view">
-    <h2>フラッシュカード</h2>
-    <div id="flashcard-setup">
-      <p>枚数を選んでください（優先度の高い単語から出題されます）</p>
-      <div class="option-row">
-        <button class="count-btn" data-count="10">10枚</button>
-        <button class="count-btn" data-count="20">20枚</button>
-        <button class="count-btn" data-count="30">30枚</button>
-      </div>
+    <h2>フラッシュカード（間違えた単語）</h2>
+    <div id="flashcard-intro">
+      <p class="hint">これまでのクイズで一度でも間違えた単語だけを集めたカードです。表面は単語、裏面でふりがな・意味・出典を確認できます。</p>
+      <p id="flashcard-count-text" class="count-text"></p>
+      <button id="flashcard-start-btn" class="primary-btn big-btn hidden">フラッシュカードを始める</button>
+      <p id="flashcard-empty-msg" class="hint hidden">まだ間違えた単語がありません。クイズに挑戦してみましょう。</p>
     </div>
     <div id="flashcard-play" class="hidden">
       <div class="play-topline">
